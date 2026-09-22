@@ -236,6 +236,31 @@ def test_unobserved_outcomes_do_not_disable_the_no_progress_stop(runner):
     assert runner.state["status"] == "blocked"
 
 
+def test_tick_stops_when_every_observation_fails(runner):
+    # A failing post-action observe raises out of `act` before the inline guard can
+    # run, so only the tick recovery path sees the accumulating None outcomes.
+    runner.state["browser"].observe.side_effect = StalePage("screenshot timed out")
+    for _ in range(3):
+        runner.state["decision"] = decision("e3")
+        with pytest.raises(StalePage):
+            runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
+    assert [h["page_changed"] for h in runner.state["history"]] == [None, None, None]
+    runner.state["browser"].observe.side_effect = None
+    runner.state["browser"].observe.return_value = page()
+    runner.state["browser"].fresh.side_effect = StalePage("Document navigating")
+    runner.command("tick")
+    assert runner.state["status"] == "blocked"
+
+
+def test_tick_recovery_does_not_stop_a_progressing_run(runner):
+    # The recovery path must not block while the last three actions did advance.
+    for changed in (True, False, True):
+        runner.state["history"].append({"page_changed": changed, "kind": "click"})
+    runner.state["browser"].fresh.side_effect = StalePage("Document navigating")
+    runner.command("tick")
+    assert runner.state["status"] == "ready"
+
+
 def test_stale_observation_preserves_executed_action(runner):
     runner.state["decision"] = decision("e3")
     runner.state["browser"].observe.side_effect = StalePage("changed")
