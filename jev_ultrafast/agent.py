@@ -151,9 +151,11 @@ class Agent:
                     base64.b64decode(state["page"]["screenshot"])
                 )
             repeated = state["history"][-3:]
+            # An unobserved outcome (a failed post-action observation) is not proven progress:
+            # the guard must still stop a stalled run instead of funding it to the model-call budget.
             state["status"] = (
                 "blocked"
-                if len(repeated) == 3 and all(h["page_changed"] is False and h["kind"] != "wait" for h in repeated)
+                if len(repeated) == 3 and all(h["page_changed"] is not True and h["kind"] != "wait" for h in repeated)
                 else "ready"
             )
         else:

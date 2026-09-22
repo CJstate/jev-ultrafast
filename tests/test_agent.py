@@ -218,6 +218,24 @@ def test_loading_waits_do_not_trigger_no_progress_stop(runner):
     assert len(runner.state["history"]) == 5 and runner.state["status"] == "ready"
 
 
+def test_unobserved_outcomes_do_not_disable_the_no_progress_stop(runner):
+    # Alternating failed post-action observations kept page_changed=None and disabled the guard (#94).
+    runner.state["browser"].observe.side_effect = [
+        StalePage("screenshot timed out"),
+        page(),
+        StalePage("screenshot timed out"),
+        page(),
+    ]
+    for _ in range(4):
+        runner.state["decision"] = decision("e3")
+        try:
+            runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
+        except StalePage:
+            pass  # The tick handler recovers the same way.
+    assert [h["page_changed"] for h in runner.state["history"]] == [None, False, None, False]
+    assert runner.state["status"] == "blocked"
+
+
 def test_stale_observation_preserves_executed_action(runner):
     runner.state["decision"] = decision("e3")
     runner.state["browser"].observe.side_effect = StalePage("changed")
